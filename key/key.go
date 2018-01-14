@@ -17,11 +17,9 @@ import (
 	"github.com/agl/ed25519/extra25519"
 	kyber "github.com/dedis/kyber"
 	"github.com/dedis/kyber/group/edwards25519"
-	"github.com/dedis/kyber/util/encoding"
-	net "github.com/nikkolasg/mulsigo/network"
 )
 
-var Group = edwards25519.NewAES128SHA256Ed25519()
+var Group = edwards25519.NewBlakeSHA256Ed25519()
 
 type Private struct {
 	seed   *ed25519.PrivateKey
@@ -75,7 +73,7 @@ type Identity struct {
 	Signature []byte
 	// reachable - usually empty if using a relay but if provided, will enable
 	// one to make direct connection between a pair of peers.
-	Address net.Address
+	Address string
 }
 
 // selfsign marshals the identity's name,creation time and public key and then
@@ -155,7 +153,7 @@ func (i *Identity) Toml() interface{} {
 		Key:       publicStr,
 		Signature: sigStr,
 		Name:      i.Name,
-		Address:   i.Address.String(),
+		Address:   i.Address,
 		CreatedAt: i.CreatedAt,
 	}
 }
@@ -176,7 +174,7 @@ func (i *Identity) FromToml(f string) error {
 	}
 	i.Name = it.Name
 	i.Key = public
-	i.Address = net.Address(it.Address)
+	i.Address = it.Address
 	i.Signature = signature
 	return nil
 }
@@ -187,68 +185,6 @@ func (i *Identity) Point() kyber.Point {
 		panic(err)
 	}
 	return p
-}
-
-// GroupConfig is the public configuration of a group using mulsigo. It is
-// similar to a public pgp identity with a name, email and comment. It contains
-// the additional public information on all the participants of the group.
-type GroupConfig struct {
-	Name    string
-	Email   string
-	Comment string
-
-	// coefficients of the public polynomial
-	Public []kyber.Point
-	// list of node's identity participating
-	Ids []Identity
-	// threshold of the group
-	T int
-
-	PgpID     uint64
-	PgpPublic string
-}
-
-type groupConfigToml struct {
-	Name    string
-	Email   string
-	Comment string
-
-	// coefficient of the public polynomial
-	Public []string
-	// list of node's identity participating
-	Ids []identityToml
-	// threshold of the group
-	T int
-
-	PgpID     string
-	PgpPublic string
-}
-
-func (g *GroupConfig) toml() interface{} {
-	publics := make([]string, len(g.Public))
-	for i, p := range g.Public {
-		s, err := encoding.PointToString64(Group, p)
-		if err != nil {
-			return err
-		}
-		publics[i] = s
-	}
-
-	ids := make([]identityToml, len(g.Ids))
-	for i, id := range g.Ids {
-		itoml := id.Toml().(*identityToml)
-		ids[i] = *itoml
-	}
-
-	return &groupConfigToml{
-		Name:      g.Name,
-		Email:     g.Email,
-		Comment:   g.Comment,
-		Public:    publics,
-		Ids:       ids,
-		T:         g.T,
-		PgpPublic: g.PgpPublic,
-	}
 }
 
 func ed25519PrivateToCurve25519(p *ed25519.PrivateKey) [32]byte {

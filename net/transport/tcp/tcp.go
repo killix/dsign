@@ -6,12 +6,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nikkolasg/dsign/key"
 	"github.com/nikkolasg/dsign/net/transport"
 )
 
 type tcpTransport struct {
-	// the id of this peer
-	id transport.ID
 	// the listener of incoming connections
 	listener net.Listener
 	// the close channel used to indicate to the listener we want to quit.
@@ -35,21 +34,24 @@ func NewTcpTransport() *tcpTransport {
 	}
 }
 
-func (t *tcpTransport) Dial(id transport.ID) (net.Conn, error) {
-	if id.Type != transport.TCP {
-		return nil, transport.ErrWrongTypeID
+func (t *tcpTransport) Dial(id *key.Identity) (net.Conn, error) {
+	if _, _, err := net.SplitHostPort(id.Address); err != nil {
+		return nil, err
 	}
-	return net.Dial("tcp", id.Val)
+	return net.Dial("tcp", id.Address)
 }
 
-func (t *tcpTransport) Listen(id transport.ID, h transport.Handler) error {
+func (t *tcpTransport) Listen(id *key.Identity, h transport.Handler) error {
+	if _, _, err := net.SplitHostPort(id.Address); err != nil {
+		return err
+	}
 	t.Lock()
 	if t.closed == true {
 		t.Unlock()
 		return transport.ErrTransportClosed
 	}
 	var err error
-	t.listener, err = net.Listen("tcp", id.Val)
+	t.listener, err = net.Listen("tcp", id.Address)
 	if err != nil {
 		t.Unlock()
 		return err
@@ -67,7 +69,6 @@ func (t *tcpTransport) Listen(id transport.ID, h transport.Handler) error {
 			}
 			continue
 		}
-		id := transport.ID{Type: transport.TCP, Val: conn.RemoteAddr().String()}
 		h(id, conn)
 	}
 }

@@ -5,19 +5,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikkolasg/dsign/net/transport"
+	"github.com/nikkolasg/dsign/key"
 	"github.com/stretchr/testify/require"
 )
 
 // Test Listening with echo and connecting
 func TestTcpTransport(t *testing.T) {
 	message := []byte("mountainsofmadness")
-	id1 := TcpID("127.0.0.1:8000")
+	id1 := fakeId("127.0.0.1:8000")
 
 	t1 := NewTcpTransport()
 	t2 := NewTcpTransport()
 
-	handler := func(id transport.ID, c net.Conn) {
+	handler := func(id *key.Identity, c net.Conn) {
 		var buff [32]byte
 		n, err := c.Read(buff[:])
 		require.Nil(t, err)
@@ -54,6 +54,6 @@ func TestTcpTransport(t *testing.T) {
 	}
 }
 
-func TcpID(addr string) transport.ID {
-	return transport.ID{Type: transport.TCP, Val: addr}
+func fakeId(addr string) *key.Identity {
+	return &key.Identity{Address: addr}
 }
