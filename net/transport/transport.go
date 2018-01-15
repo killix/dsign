@@ -13,7 +13,7 @@ import (
 // might use two or more underlying Transport.
 type Transport interface {
 	Dial(*key.Identity) (net.Conn, error)
-	Listen(Handler) error
+	Listen(*key.Identity, Handler) error
 	Close() error
 }
 

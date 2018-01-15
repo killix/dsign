@@ -2,13 +2,11 @@ package key
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"io"
-	"time"
 
 	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/ed25519"
@@ -19,7 +17,7 @@ import (
 	"github.com/dedis/kyber/group/edwards25519"
 )
 
-var Group = edwards25519.NewBlakeSHA256Ed25519()
+var Curve = edwards25519.NewBlakeSHA256Ed25519()
 
 type Private struct {
 	seed   *ed25519.PrivateKey
@@ -35,7 +33,7 @@ func (p *Private) Scalar() kyber.Scalar {
 	digest[31] &= 127
 	digest[31] |= 64
 
-	s := Group.Scalar()
+	s := Curve.Scalar()
 	if err := s.UnmarshalBinary(digest[:32]); err != nil {
 		panic(err)
 	}
@@ -53,56 +51,50 @@ func (p *Private) PublicCurve25519() [32]byte {
 	return pubCurve
 }
 
-func NewPrivateIdentity(name string, r io.Reader) (*Private, *Identity, error) {
+func NewPrivateIdentity(r io.Reader) (*Private, *Identity, error) {
+	return NewPrivateIdentityWithAddr("", r)
+}
+
+func NewPrivateIdentityWithAddr(addr string, r io.Reader) (*Private, *Identity, error) {
 	pub, privEd, err := ed25519.GenerateKey(r)
+	if err != nil {
+		return nil, nil, err
+	}
 	id := &Identity{
-		Name:      name,
-		CreatedAt: time.Now().Unix(),
-		Key:       pub,
+		Key:     pub,
+		Address: addr,
 	}
 	priv := &Private{seed: &privEd, Public: id}
 
-	err = id.selfsign(priv, r)
-	return priv, id, err
+	id.selfsign(priv, r)
+	return priv, id, nil
 }
 
 type Identity struct {
-	Name      string
-	Key       []byte
-	CreatedAt int64
+	// ed25519 public key
+	Key []byte
+	// self signature
 	Signature []byte
+	// ID represents a condensed version of this Identity. Specifically, it is
+	// the hex representation of the hash of the signature using sha256.
+	ID string
 	// reachable - usually empty if using a relay but if provided, will enable
 	// one to make direct connection between a pair of peers.
 	Address string
 }
 
-// selfsign marshals the identity's name,creation time and public key and then
-// signs the resulting buffer. The signature can be accessed through the
-// Signature field of the Identity. It is a Schnorr signature that can be
-// verified using Ed25519 (first EdDSA versions) signature verification
-// routines.
-func (i *Identity) selfsign(p *Private, r io.Reader) error {
+// selfsign marshals the identity's public key, and the address if present, and
+// then signs the resulting buffer. The signature can be accessed through the
+// Signature field of the Identity. It is a regular Eddsa signature.
+func (i *Identity) selfsign(p *Private, r io.Reader) {
 	var buff bytes.Buffer
-	buff.WriteString(i.Name)
-	err := binary.Write(&buff, binary.LittleEndian, i.CreatedAt)
-	if err != nil {
-		return err
-	}
 	buff.Write(i.Key)
+	if i.Address != "" {
+		buff.Write([]byte(i.Address))
+	}
 	i.Signature = ed25519.Sign(*p.seed, buff.Bytes())
-	return nil
-}
-
-func (i *Identity) Repr() string {
-	var buff bytes.Buffer
-	str := base64.StdEncoding.EncodeToString(i.Key)
-	fmt.Fprintf(&buff, "id:\t%s ", i.Name)
-	fmt.Fprintf(&buff, "\n\t%s", str)
-	return buff.String()
-}
-
-func (i *Identity) ID() string {
-	return hex.EncodeToString(i.Key)[:16]
+	b := sha256.Sum256(i.Signature)
+	i.ID = hex.EncodeToString(b[:])
 }
 
 func (i *Identity) PublicCurve25519() [32]byte {
@@ -152,9 +144,7 @@ func (i *Identity) Toml() interface{} {
 	return &identityToml{
 		Key:       publicStr,
 		Signature: sigStr,
-		Name:      i.Name,
 		Address:   i.Address,
-		CreatedAt: i.CreatedAt,
 	}
 }
 
@@ -172,7 +162,6 @@ func (i *Identity) FromToml(f string) error {
 	if err != nil {
 		return err
 	}
-	i.Name = it.Name
 	i.Key = public
 	i.Address = it.Address
 	i.Signature = signature
@@ -180,7 +169,7 @@ func (i *Identity) FromToml(f string) error {
 }
 
 func (i *Identity) Point() kyber.Point {
-	p := Group.Point()
+	p := Curve.Point()
 	if err := p.UnmarshalBinary(i.Key); err != nil {
 		panic(err)
 	}

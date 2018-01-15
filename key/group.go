@@ -5,10 +5,10 @@ import (
 	"github.com/dedis/kyber/util/encoding"
 )
 
-// GroupConfig is the public configuration of a group using mulsigo. It is
+// GroupIdentity is the identity of a group created with dsign. It is
 // similar to a public pgp identity with a name, email and comment. It contains
 // the additional public information on all the participants of the group.
-type GroupConfig struct {
+type GroupIdentity struct {
 	Name    string
 	Email   string
 	Comment string
@@ -24,7 +24,7 @@ type GroupConfig struct {
 	PgpPublic string
 }
 
-type groupConfigToml struct {
+type groupToml struct {
 	Name    string
 	Email   string
 	Comment string
@@ -40,10 +40,10 @@ type groupConfigToml struct {
 	PgpPublic string
 }
 
-func (g *GroupConfig) toml() interface{} {
+func (g *GroupIdentity) toml() interface{} {
 	publics := make([]string, len(g.Public))
 	for i, p := range g.Public {
-		s, err := encoding.PointToStringHex(Group, p)
+		s, err := encoding.PointToStringHex(Curve, p)
 		if err != nil {
 			return err
 		}
@@ -56,7 +56,7 @@ func (g *GroupConfig) toml() interface{} {
 		ids[i] = *itoml
 	}
 
-	return &groupConfigToml{
+	return &groupToml{
 		Name:      g.Name,
 		Email:     g.Email,
 		Comment:   g.Comment,

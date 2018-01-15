@@ -17,6 +17,9 @@ func TestTcpTransport(t *testing.T) {
 	t1 := NewTcpTransport()
 	t2 := NewTcpTransport()
 
+	_, ok := t1.(Transport)
+	require.True(t, ok)
+
 	handler := func(id *key.Identity, c net.Conn) {
 		var buff [32]byte
 		n, err := c.Read(buff[:])

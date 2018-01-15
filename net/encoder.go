@@ -7,6 +7,7 @@ import (
 
 	"github.com/dedis/kyber"
 	"github.com/dedis/protobuf"
+	"github.com/nikkolasg/dsign/key"
 )
 
 var globalOrder = binary.BigEndian
@@ -24,6 +25,8 @@ type Encoder interface {
 	Unmarshal([]byte) (interface{}, error)
 }
 
+var ClientMessageEncoder = NewSingleProtoEncoder(key.Curve, ClientMessage{})
+
 // SingleProtoEncoder is a struct that encodes and decodes a unique message using
 // protobuf.  This encoder is useful when the whole message set can be contained
 // in a single wrapper struct that protobuf can decode.
@@ -32,23 +35,22 @@ type SingleProtoEncoder struct {
 	cons protobuf.Constructors
 }
 
-func NewSingleProtoEncoder(msg Message) *SingleProtoEncoder {
+func NewSingleProtoEncoder(g kyber.Group, msg interface{}) *SingleProtoEncoder {
 	t := getValueType(msg)
-	return &SingleProtoEncoder{t, defaultConstructors(Suite)}
+	return &SingleProtoEncoder{t, defaultConstructors(g)}
 }
 
-func (m *SingleProtoEncoder) Marshal(msg Message) ([]byte, error) {
+func (m *SingleProtoEncoder) Marshal(msg interface{}) ([]byte, error) {
 	if t := getValueType(msg); t != m.t {
 		return nil, fmt.Errorf("monoencoder: can't encode %s", t.String())
 	}
 	return protobuf.Encode(msg)
 }
 
-func (m *SingleProtoEncoder) Unmarshal(buff []byte) (Message, error) {
+func (m *SingleProtoEncoder) Unmarshal(buff []byte) (interface{}, error) {
 	ptrVal := reflect.New(m.t)
 	ptr := ptrVal.Interface()
-	constructors := defaultConstructors(Suite)
-	if err := protobuf.DecodeWithConstructors(buff, ptr, constructors); err != nil {
+	if err := protobuf.DecodeWithConstructors(buff, ptr, m.cons); err != nil {
 		return nil, err
 	}
 
@@ -63,4 +65,12 @@ func defaultConstructors(g kyber.Group) protobuf.Constructors {
 	constructors[reflect.TypeOf(&point).Elem()] = func() interface{} { return g.Point() }
 	constructors[reflect.TypeOf(&secret).Elem()] = func() interface{} { return g.Scalar() }
 	return constructors
+}
+
+func getValueType(m interface{}) reflect.Type {
+	val := reflect.ValueOf(m)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	return val.Type()
 }
