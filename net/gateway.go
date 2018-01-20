@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nikkolasg/dsign/key"
+	"github.com/nikkolasg/dsign/net/transport"
 )
 
 // Gateway is the gateway between dsign and the rest of the world. It enables to
@@ -19,7 +20,7 @@ type Gateway interface {
 	// Gateway uses an underlying transport mechanism. Note that if you use any
 	// function of the transport itself directly, the Gateway is not
 	// responsible and do not manage any connection made this way.
-	Transport() Transport
+	Transport() transport.Transport
 	// Send sends a message to the given peer represented by this identity.
 	Send(to *key.Identity, msg *ClientMessage) error
 	// Start runs the Transport. The given Processor will be handled any new
@@ -33,7 +34,7 @@ type Gateway interface {
 type Processor func(from *key.Identity, msg *ClientMessage)
 
 type gateway struct {
-	transport Transport
+	transport transport.Transport
 
 	conns map[string]net.Conn
 
@@ -45,7 +46,7 @@ type gateway struct {
 
 // NewGateway returns a default gateway using the underlying given transport
 // implementation.
-func NewGateway(t Transport) Gateway {
+func NewGateway(t transport.Transport) Gateway {
 	return &gateway{
 		transport: t,
 		conns:     make(map[string]net.Conn),
@@ -55,15 +56,17 @@ func NewGateway(t Transport) Gateway {
 func (g *gateway) Send(to *key.Identity, msg *ClientMessage) error {
 	g.Lock()
 	var err error
-	id := to.ID
-	conn, ok := g.conns[id]
+	fmt.Println(to.ID)
+	fmt.Println(g.conns)
+	conn, ok := g.conns[to.ID]
+	fmt.Println("hell")
 	if !ok {
 		conn, err = g.transport.Dial(to)
 		if err != nil {
 			g.Unlock()
 			return err
 		}
-		g.conns[id] = conn
+		g.conns[to.ID] = conn
 		go g.listenIncoming(to, conn)
 	}
 	g.Unlock()
@@ -112,7 +115,7 @@ func (g *gateway) Stop() error {
 	return g.transport.Close()
 }
 
-func (g *gateway) Transport() Transport {
+func (g *gateway) Transport() transport.Transport {
 	return g.transport
 }
 

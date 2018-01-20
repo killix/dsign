@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/nikkolasg/dsign/key"
-	tr "github.com/nikkolasg/dsign/net"
+	tr "github.com/nikkolasg/dsign/net/transport"
 	"github.com/stretchr/testify/require"
 )
 

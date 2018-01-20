@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/nikkolasg/dsign/key"
-	"github.com/nikkolasg/dsign/net"
+	"github.com/nikkolasg/dsign/net/transport"
 )
 
 type tcpTransport struct {
@@ -29,7 +29,7 @@ type tcpTransport struct {
 }
 
 // NewTCPTransport returns a Transport using TCP/IP
-func NewTCPTransport(id *key.Identity) net.Transport {
+func NewTCPTransport(id *key.Identity) transport.Transport {
 	return &tcpTransport{
 		id:           id,
 		quit:         make(chan bool),
@@ -37,22 +37,23 @@ func NewTCPTransport(id *key.Identity) net.Transport {
 	}
 }
 
-func (t *tcpTransport) Dial(id *key.Identity) (net.Conn, error) {
+func (t *tcpTransport) Dial(id *key.Identity) (transport.Conn, error) {
 	if _, _, err := gnet.SplitHostPort(id.Address); err != nil {
 		return nil, err
 	}
 	return gnet.Dial("tcp", id.Address)
 }
 
-func (t *tcpTransport) Listen(h net.Handler) error {
+func (t *tcpTransport) Listen(h transport.Handler) error {
 	id := t.id
 	if _, _, err := gnet.SplitHostPort(id.Address); err != nil {
 		return err
 	}
+
 	t.Lock()
 	if t.closed == true {
 		t.Unlock()
-		return net.ErrTransportClosed
+		return transport.ErrTransportClosed
 	}
 	var err error
 	t.listener, err = gnet.Listen("tcp", id.Address)
@@ -73,7 +74,7 @@ func (t *tcpTransport) Listen(h net.Handler) error {
 			}
 			continue
 		}
-		go h(id, conn)
+		go h(nil, conn)
 	}
 }
 
