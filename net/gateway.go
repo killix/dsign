@@ -3,48 +3,51 @@ package net
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/nikkolasg/dsign/key"
-	"github.com/nikkolasg/dsign/net/transport"
 )
 
 // Gateway is the gateway between dsign and the rest of the world. It enables to
 // send messages and to receive messages. It uses a given underlying transport
 // for its communication. For the moment,
 type Gateway interface {
-	transport.Transport
+	// Gateway uses an underlying transport mechanism. Note that if you use any
+	// function of the transport itself directly, the Gateway is not
+	// responsible and do not manage any connection made this way.
+	Transport() Transport
+	// Send sends a message to the given peer represented by this identity.
 	Send(to *key.Identity, msg *ClientMessage) error
-	// RegisterHandler takes a handler to dispatch incoming messages
-	// to.
-	RegisterHandler(Handler)
+	// Start runs the Transport. The given Processor will be handled any new
+	// incoming packets from the Transport.
+	Start(Processor) error
+	// Stop closes all conections and stop the listening
+	Stop() error
 }
 
-// Handler is a function that receives messages from the network
-type Handler func(from *key.Identity, msg *ClientMessage)
+// Processor is a function that receives messages from the network
+type Processor func(from *key.Identity, msg *ClientMessage)
 
 type gateway struct {
-	transport.Transport
-
-	priv  *key.Private
-	group *key.GroupIdentity
+	transport Transport
 
 	conns map[string]net.Conn
 
-	handler Handler
+	processor Processor
 
 	closed bool
 	sync.Mutex
 }
 
-func NewGateway(t transport.Transport, priv *key.Private, g *key.GroupIdentity) Gateway {
+// NewGateway returns a default gateway using the underlying given transport
+// implementation.
+func NewGateway(t Transport) Gateway {
 	return &gateway{
-		Transport: t,
-		priv:      priv,
-		group:     g,
+		transport: t,
 		conns:     make(map[string]net.Conn),
 	}
 }
@@ -55,7 +58,7 @@ func (g *gateway) Send(to *key.Identity, msg *ClientMessage) error {
 	id := to.ID
 	conn, ok := g.conns[id]
 	if !ok {
-		conn, err = g.Transport.Dial(to)
+		conn, err = g.transport.Dial(to)
 		if err != nil {
 			g.Unlock()
 			return err
@@ -71,15 +74,6 @@ func (g *gateway) Send(to *key.Identity, msg *ClientMessage) error {
 	return sendBytes(conn, buff)
 }
 
-func (g *gateway) RegisterHandler(h Handler) {
-	g.Lock()
-	defer g.Unlock()
-	if g.handler != nil {
-		panic("router only supports one handler registration")
-	}
-	g.handler = h
-}
-
 func (g *gateway) listenIncoming(remote *key.Identity, c net.Conn) {
 	for !g.isClosed() {
 		buff, err := rcvBytes(c)
@@ -91,22 +85,35 @@ func (g *gateway) listenIncoming(remote *key.Identity, c net.Conn) {
 			return
 		}
 		msg := unmarshald.(*ClientMessage)
-		if g.handler == nil {
+		if g.processor == nil {
 			continue
 		}
 		// XXX maybe switch to a consumer/producer style if needed
-		g.handler(remote, msg)
+		g.processor(remote, msg)
 	}
 }
 
-func (g *gateway) Close() error {
+func (g *gateway) Start(h Processor) error {
+	if g.processor != nil {
+		return errors.New("router only supports one handler registration")
+	}
+	g.processor = h
+	go g.transport.Listen(g.listenIncoming)
+	return nil
+}
+
+func (g *gateway) Stop() error {
 	g.Lock()
 	defer g.Unlock()
 	g.closed = true
 	for _, c := range g.conns {
 		c.Close()
 	}
-	return g.Transport.Close()
+	return g.transport.Close()
+}
+
+func (g *gateway) Transport() Transport {
+	return g.transport
 }
 
 func (g *gateway) isClosed() bool {

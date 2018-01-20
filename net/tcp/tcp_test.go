@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/nikkolasg/dsign/key"
-	tr "github.com/nikkolasg/dsign/net/transport"
+	tr "github.com/nikkolasg/dsign/net"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,10 +14,11 @@ import (
 func TestTcpTransport(t *testing.T) {
 	message := []byte("mountainsofmadness")
 	id1 := fakeID("127.0.0.1:8000")
+	id2 := fakeID("127.0.0.1:8001")
 
 	var _ tr.Transport = (*tcpTransport)(nil)
-	t1 := NewTcpTransport()
-	t2 := NewTcpTransport()
+	t1 := NewTCPTransport(id1)
+	t2 := NewTCPTransport(id2)
 
 	handler := func(id *key.Identity, c net.Conn) {
 		var buff [32]byte
@@ -31,7 +32,7 @@ func TestTcpTransport(t *testing.T) {
 	done := make(chan bool)
 
 	go func() {
-		err := t1.Listen(id1, handler)
+		err := t1.Listen(handler)
 		require.Nil(t, err)
 		done <- true
 	}()

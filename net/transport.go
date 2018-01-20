@@ -1,4 +1,4 @@
-package transport
+package net
 
 import (
 	"errors"
@@ -12,13 +12,19 @@ import (
 // which is transport specific.  Note that a given Transport implementation
 // might use two or more underlying Transport.
 type Transport interface {
-	Dial(*key.Identity) (net.Conn, error)
-	Listen(*key.Identity, Handler) error
+	Dial(*key.Identity) (Conn, error)
+	Listen(Handler) error
 	Close() error
 }
 
-// Handler is a function that operates under an incoming connection with the
-// given Address. Address is transport specific.
+// Conn is a simple alias for net.Conn to avoid msiconfusion with the regular
+// golang package.
+type Conn net.Conn
+
+// Handler is a function alias for handling new incoming connection from a
+// Transport.
 type Handler func(i *key.Identity, conn net.Conn)
 
+// ErrTransportClosed gets triggered when oen tries to send a message over a
+// closed connection.
 var ErrTransportClosed = errors.New("transport already closed")

@@ -1,18 +1,19 @@
 package tcp
 
 import (
-	"net"
+	gnet "net"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/nikkolasg/dsign/key"
-	"github.com/nikkolasg/dsign/net/transport"
+	"github.com/nikkolasg/dsign/net"
 )
 
 type tcpTransport struct {
+	id *key.Identity
 	// the listener of incoming connections
-	listener net.Listener
+	listener gnet.Listener
 	// the close channel used to indicate to the listener we want to quit.
 	quit chan bool
 	// quitListener is a channel to indicate to the closing function that the
@@ -27,31 +28,34 @@ type tcpTransport struct {
 	sync.Mutex
 }
 
-func NewTcpTransport() *tcpTransport {
+// NewTCPTransport returns a Transport using TCP/IP
+func NewTCPTransport(id *key.Identity) net.Transport {
 	return &tcpTransport{
+		id:           id,
 		quit:         make(chan bool),
 		quitListener: make(chan bool),
 	}
 }
 
 func (t *tcpTransport) Dial(id *key.Identity) (net.Conn, error) {
-	if _, _, err := net.SplitHostPort(id.Address); err != nil {
+	if _, _, err := gnet.SplitHostPort(id.Address); err != nil {
 		return nil, err
 	}
-	return net.Dial("tcp", id.Address)
+	return gnet.Dial("tcp", id.Address)
 }
 
-func (t *tcpTransport) Listen(id *key.Identity, h transport.Handler) error {
-	if _, _, err := net.SplitHostPort(id.Address); err != nil {
+func (t *tcpTransport) Listen(h net.Handler) error {
+	id := t.id
+	if _, _, err := gnet.SplitHostPort(id.Address); err != nil {
 		return err
 	}
 	t.Lock()
 	if t.closed == true {
 		t.Unlock()
-		return transport.ErrTransportClosed
+		return net.ErrTransportClosed
 	}
 	var err error
-	t.listener, err = net.Listen("tcp", id.Address)
+	t.listener, err = gnet.Listen("tcp", id.Address)
 	if err != nil {
 		t.Unlock()
 		return err
@@ -69,7 +73,7 @@ func (t *tcpTransport) Listen(id *key.Identity, h transport.Handler) error {
 			}
 			continue
 		}
-		h(id, conn)
+		go h(id, conn)
 	}
 }
 
