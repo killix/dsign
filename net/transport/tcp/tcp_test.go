@@ -1,7 +1,6 @@
 package tcp
 
 import (
-	"net"
 	"testing"
 	"time"
 
@@ -20,7 +19,7 @@ func TestTcpTransport(t *testing.T) {
 	t1 := NewTCPTransport(id1)
 	t2 := NewTCPTransport(id2)
 
-	handler := func(id *key.Identity, c net.Conn) {
+	handler := func(id *key.Identity, c tr.Conn) {
 		var buff [32]byte
 		n, err := c.Read(buff[:])
 		require.Nil(t, err)

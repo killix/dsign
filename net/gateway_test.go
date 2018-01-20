@@ -8,7 +8,7 @@ import (
 
 	"github.com/nikkolasg/dsign/key"
 	"github.com/nikkolasg/dsign/net"
-	"github.com/nikkolasg/dsign/net/tcp"
+	"github.com/nikkolasg/dsign/net/transport/tcp"
 	"github.com/stretchr/testify/require"
 )
 

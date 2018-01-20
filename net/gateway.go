@@ -77,7 +77,7 @@ func (g *gateway) Send(to *key.Identity, msg *ClientMessage) error {
 	return sendBytes(conn, buff)
 }
 
-func (g *gateway) listenIncoming(remote *key.Identity, c net.Conn) {
+func (g *gateway) listenIncoming(remote *key.Identity, c transport.Conn) {
 	for !g.isClosed() {
 		buff, err := rcvBytes(c)
 		if err != nil {
