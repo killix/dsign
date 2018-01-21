@@ -2,7 +2,6 @@ package net_test
 
 import (
 	"crypto/rand"
-	"fmt"
 	"testing"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 )
 
 func TestGateway(t *testing.T) {
-	t.Skip()
 	_, pub1 := fakeID("127.0.0.1:8000")
 	tr1 := tcp.NewTCPTransport(pub1)
 	g1 := net.NewGateway(tr1)
@@ -23,28 +21,42 @@ func TestGateway(t *testing.T) {
 	g2 := net.NewGateway(tr2)
 
 	listenDone := make(chan bool)
-	handler := func(from *key.Identity, msg *net.ClientMessage) {
+	rcvDone := make(chan bool)
+	handler2 := func(from *key.Identity, msg *net.ClientMessage) {
 		// XXX from is nil for tcp connections only. need to do noise XXX
-		require.Nil(t, g2.Send(from, msg))
-		require.Nil(t, g2.Stop())
+		require.Nil(t, g2.Send(pub1, msg))
 		listenDone <- true
 	}
+	handler1 := func(from *key.Identity, msg *net.ClientMessage) {
+		require.Equal(t, uint32(10), msg.Type)
+		rcvDone <- true
+	}
 
-	require.Nil(t, g2.Start(handler))
+	require.Nil(t, g2.Start(handler2))
+	require.Nil(t, g1.Start(handler1))
+
 	time.Sleep(10 * time.Millisecond)
-	msg := &net.ClientMessage{}
+	msg := &net.ClientMessage{Type: 10}
 	err := g1.Send(pub2, msg)
 	if err != nil {
-		fmt.Println(err.Error())
+		//fmt.Println(err.Error())
 		require.Nil(t, err)
 	}
-	require.Nil(t, g1.Stop())
 	select {
 	case <-listenDone:
-		return
+		break
 	case <-time.After(20 * time.Millisecond):
 		t.Fatal("g2 not closing listening...")
 	}
+	select {
+	case <-rcvDone:
+		break
+	case <-time.After(20 * time.Millisecond):
+		t.Fatal("g1 not receiving anything")
+	}
+	require.Nil(t, g1.Stop())
+	require.Nil(t, g2.Stop())
+
 }
 
 func fakeID(addr string) (*key.Private, *key.Identity) {

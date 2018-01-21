@@ -56,10 +56,7 @@ func NewGateway(t transport.Transport) Gateway {
 func (g *gateway) Send(to *key.Identity, msg *ClientMessage) error {
 	g.Lock()
 	var err error
-	fmt.Println(to.ID)
-	fmt.Println(g.conns)
 	conn, ok := g.conns[to.ID]
-	fmt.Println("hell")
 	if !ok {
 		conn, err = g.transport.Dial(to)
 		if err != nil {
