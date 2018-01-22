@@ -74,7 +74,13 @@ func (t *tcpTransport) Listen(h transport.Handler) error {
 			}
 			continue
 		}
-		go h(nil, conn)
+		// NOTE: tcp can't provide authenticity so it justs provides the IP
+		// address
+		remoteID := &key.Identity{
+			Address: conn.RemoteAddr().String(),
+		}
+		remoteID.ID = remoteID.Address
+		go h(remoteID, conn)
 	}
 }
 

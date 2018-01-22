@@ -22,13 +22,13 @@ func TestGateway(t *testing.T) {
 
 	listenDone := make(chan bool)
 	rcvDone := make(chan bool)
-	handler2 := func(from *key.Identity, msg *net.ClientMessage) {
+	handler2 := func(from *key.Identity, msg []byte) {
 		// XXX from is nil for tcp connections only. need to do noise XXX
 		require.Nil(t, g2.Send(pub1, msg))
 		listenDone <- true
 	}
-	handler1 := func(from *key.Identity, msg *net.ClientMessage) {
-		require.Equal(t, uint32(10), msg.Type)
+	handler1 := func(from *key.Identity, msg []byte) {
+		require.Equal(t, []byte{0x2a}, msg)
 		rcvDone <- true
 	}
 
@@ -36,7 +36,7 @@ func TestGateway(t *testing.T) {
 	require.Nil(t, g1.Start(handler1))
 
 	time.Sleep(10 * time.Millisecond)
-	msg := &net.ClientMessage{Type: 10}
+	msg := []byte{0x2a}
 	err := g1.Send(pub2, msg)
 	if err != nil {
 		//fmt.Println(err.Error())

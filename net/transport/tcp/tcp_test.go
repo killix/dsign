@@ -6,11 +6,28 @@ import (
 
 	"github.com/nikkolasg/dsign/key"
 	tr "github.com/nikkolasg/dsign/net/transport"
+	"github.com/nikkolasg/dsign/net/transport/internal"
 	"github.com/stretchr/testify/require"
 )
 
+type tcpFactory struct{}
+
+func (t *tcpFactory) NewTransports(n int) ([]*key.Private, []tr.Transport) {
+	trs := make([]tr.Transport, n, n)
+	ids := internal.GenerateIDs(8000, n)
+	for i := range trs {
+		trs[i] = NewTCPTransport(ids[i].Public)
+	}
+	return ids, trs
+}
+
+func TestTcpGeneric(t *testing.T) {
+	internal.TestTransport(t, new(tcpFactory))
+}
+
 // Test Listening with echo and connecting
 func TestTcpTransport(t *testing.T) {
+	t.Skip()
 	message := []byte("mountainsofmadness")
 	id1 := fakeID("127.0.0.1:8000")
 	id2 := fakeID("127.0.0.1:8001")

@@ -22,7 +22,7 @@ type Gateway interface {
 	// responsible and do not manage any connection made this way.
 	Transport() transport.Transport
 	// Send sends a message to the given peer represented by this identity.
-	Send(to *key.Identity, msg *ClientMessage) error
+	Send(to *key.Identity, msg []byte) error
 	// Start runs the Transport. The given Processor will be handled any new
 	// incoming packets from the Transport.
 	Start(Processor) error
@@ -31,7 +31,7 @@ type Gateway interface {
 }
 
 // Processor is a function that receives messages from the network
-type Processor func(from *key.Identity, msg *ClientMessage)
+type Processor func(from *key.Identity, msg []byte)
 
 type gateway struct {
 	transport transport.Transport
@@ -53,7 +53,7 @@ func NewGateway(t transport.Transport) Gateway {
 	}
 }
 
-func (g *gateway) Send(to *key.Identity, msg *ClientMessage) error {
+func (g *gateway) Send(to *key.Identity, msg []byte) error {
 	g.Lock()
 	var err error
 	conn, ok := g.conns[to.ID]
@@ -67,11 +67,7 @@ func (g *gateway) Send(to *key.Identity, msg *ClientMessage) error {
 		go g.listenIncoming(to, conn)
 	}
 	g.Unlock()
-	buff, err := ClientMessageEncoder.Marshal(msg)
-	if err != nil {
-		return err
-	}
-	return sendBytes(conn, buff)
+	return sendBytes(conn, msg)
 }
 
 func (g *gateway) listenIncoming(remote *key.Identity, c transport.Conn) {
@@ -80,16 +76,11 @@ func (g *gateway) listenIncoming(remote *key.Identity, c transport.Conn) {
 		if err != nil {
 			return
 		}
-		unmarshald, err := ClientMessageEncoder.Unmarshal(buff)
-		if err != nil {
-			return
-		}
-		msg := unmarshald.(*ClientMessage)
 		if g.processor == nil {
 			continue
 		}
 		// XXX maybe switch to a consumer/producer style if needed
-		g.processor(remote, msg)
+		g.processor(remote, buff)
 	}
 }
 
@@ -184,3 +175,6 @@ var readTimeout = 1 * time.Minute
 // MaxPacketSize represents the maximum number of bytes can we receive or write
 // to a net.Conn in bytes.
 const MaxPacketSize = 1300
+
+// globalOrder is the endianess used to write the size of a message.
+var globalOrder = binary.BigEndian
