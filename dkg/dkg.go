@@ -87,6 +87,14 @@ func (h *Handler) WaitShare() chan Share {
 	return h.shareCh
 }
 
+// Timeout triggers the timeout on the dkg library. This is currently needed
+// because the implemented DKG protocol works only in synchronous network
+// settings, i.e. per "round". Some other DKG schemes have been proposed to
+// relieve that assumptions but not yet implemented.
+func (h *Handler) Timeout() {
+	h.state.SetTimeout()
+}
+
 func (h *Handler) processDeal(id *key.Identity, deal *dkg.Deal) {
 	h.Lock()
 	h.dealProcessed++
