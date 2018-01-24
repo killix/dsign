@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dedis/kyber"
 	"github.com/dedis/kyber/share/dkg/pedersen"
@@ -11,35 +12,42 @@ import (
 	"github.com/nikkolasg/slog"
 )
 
-// Network is used by the Handler to send a DKG protocol packet over the network.
-type Network interface {
-	Send(id *key.Identity, pack *Packet) error
+// Config is given to a DKG handler and contains all needed parameters to
+// successfully run the DKG protocol.
+type Config struct {
+	Private       *key.Private    // the longterm private key
+	List          []*key.Identity // the list of participants
+	Threshold     int             // the threshold of active participants needed
+	ShareCallback func(Share)     // callback gets called when share is computed
+	// XXX Currently not implemented
+	ErrCallback func(err error)
+	// XXX Currently not in use / tested
+	Timeout time.Duration // after timeout, protocol is finished in any cases.
 }
-
-// Share represents the private information that a node holds after a successful
-// DKG. This information MUST stay private !
-type Share dkg.DistKeyShare
 
 // Handler is the stateful struct that runs a DKG with the peers
 type Handler struct {
 	net           Network                    // network to send data out
-	priv          *key.Private               // the longterm private key
+	conf          *Config                    // configuration given at init time
 	idx           int                        // the index of the private/public key pair in the list
-	list          []*key.Identity            // list of participants
 	state         *dkg.DistKeyGenerator      // dkg stateful struct
 	n             int                        // number of participants
-	t             int                        // threshold of participants needed
 	tmpResponses  map[uint32][]*dkg.Response // temporary buffer of responses
 	sentDeals     bool                       // true if the deals have been sent already
 	dealProcessed int                        // how many deals have we processed so far
 	respProcessed int                        // how many responses have we processed so far
 	done          bool                       // is the protocol done
-	shareCh       chan Share                 // final share is sent over that channel
 	sync.Mutex
 }
 
 // NewHandler returns a fresh dkg handler using this private key.
-func NewHandler(n Network, priv *key.Private, list []*key.Identity, t int) *Handler {
+func NewHandler(conf *Config, n Network) *Handler {
+	if err := validateConf(conf); err != nil {
+		panic(err)
+	}
+	list := conf.List
+	priv := conf.Private
+	t := conf.Threshold
 	points := make([]kyber.Point, len(list), len(list))
 	myIdx := -1
 	myPoint := priv.Public.Point()
@@ -58,19 +66,17 @@ func NewHandler(n Network, priv *key.Private, list []*key.Identity, t int) *Hand
 		panic("dkg: error using dkg library: " + err.Error())
 	}
 	return &Handler{
-		priv:         priv,
+		conf:         conf,
 		state:        state,
 		net:          n,
 		tmpResponses: make(map[uint32][]*dkg.Response),
 		idx:          myIdx,
 		n:            len(list),
-		t:            t,
-		shareCh:      make(chan Share),
 	}
 }
 
-// ProcessMessage process an incoming message from the network.
-func (h *Handler) ProcessMessage(id *key.Identity, packet *Packet) {
+// Process process an incoming message from the network.
+func (h *Handler) Process(id *key.Identity, packet *Packet) {
 	switch {
 	case packet.Deal != nil:
 		h.processDeal(id, packet.Deal)
@@ -81,10 +87,10 @@ func (h *Handler) ProcessMessage(id *key.Identity, packet *Packet) {
 	}
 }
 
-// WaitShare returns a channel where the final distributed share for this dkg
-// participant is sent over.
-func (h *Handler) WaitShare() chan Share {
-	return h.shareCh
+// Start sends the first message to run the protocol
+func (h *Handler) Start() {
+	// XXX catch the error
+	h.sendDeals()
 }
 
 func (h *Handler) processDeal(id *key.Identity, deal *dkg.Deal) {
@@ -100,7 +106,7 @@ func (h *Handler) processDeal(id *key.Identity, deal *dkg.Deal) {
 	}
 
 	if !h.sentDeals {
-		h.sendDeals(false)
+		h.sendDeals()
 		h.sentDeals = true
 		slog.Debugf("dkg: sent all deals")
 	}
@@ -171,27 +177,23 @@ func (h *Handler) checkCertified() {
 		return
 	}
 	share := Share(*dks)
-	h.shareCh <- share
+	h.conf.ShareCallback(share)
 }
 
-// sendDeals tries to send the deals to each of the nodes. force indicates if
-// the local nodeis the initiator or not, and therefore must actively initiates
-// the connection or not.
+// sendDeals tries to send the deals to each of the nodes.
 // It returns an error if a number of node superior to the threshold have not
 // received the deal. It is basically a no-go.
-func (h *Handler) sendDeals(force bool) error {
+func (h *Handler) sendDeals() error {
 	deals, err := h.state.Deals()
 	if err != nil {
 		return err
 	}
 	var good = 1
-	//z, _ := d.group.Index(d.priv.Public)
-	//fmt.Printf("Index %d sendDeal() vs %d -- force ? %v\n ", d.idx, z, force)
 	for i, deal := range deals {
 		if i == h.idx {
 			panic("end of the universe")
 		}
-		pub := h.list[i]
+		pub := h.conf.List[i]
 		packet := &Packet{
 			Deal: deal,
 		}
@@ -202,15 +204,15 @@ func (h *Handler) sendDeals(force bool) error {
 			good++
 		}
 	}
-	if good < h.t {
-		return fmt.Errorf("dkg: could only send deals to %d / %d (threshold %d)", good, h.n, h.t)
+	if good < h.conf.Threshold {
+		return fmt.Errorf("dkg: could only send deals to %d / %d (threshold %d)", good, h.n, h.conf.Threshold)
 	}
 	slog.Infof("dkg: sent deals successfully to %d nodes", good-1)
 	return nil
 }
 
 func (h *Handler) broadcast(p *Packet) {
-	for i, id := range h.list {
+	for i, id := range h.conf.List {
 		if i == h.idx {
 			continue
 		}
@@ -219,4 +221,18 @@ func (h *Handler) broadcast(p *Packet) {
 		}
 	}
 	slog.Debugf("dkg: broadcast done")
+}
+
+// Network is used by the Handler to send a DKG protocol packet over the network.
+type Network interface {
+	Send(id *key.Identity, pack *Packet) error
+}
+
+// Share represents the private information that a node holds after a successful
+// DKG. This information MUST stay private !
+type Share dkg.DistKeyShare
+
+func validateConf(conf *Config) error {
+	// XXX TODO
+	return nil
 }
