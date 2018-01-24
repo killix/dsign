@@ -7,7 +7,6 @@ import (
 	"github.com/nikkolasg/dsign/key"
 	tr "github.com/nikkolasg/dsign/net/transport"
 	"github.com/nikkolasg/dsign/net/transport/internal"
-	"github.com/nikkolasg/dsign/test"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,7 +14,7 @@ type tcpFactory struct{}
 
 func (t *tcpFactory) NewTransports(n int) ([]*key.Private, []tr.Transport) {
 	trs := make([]tr.Transport, n, n)
-	ids := test.GenerateIDs(8000, n)
+	ids := internal.GenerateIDs(8000, n)
 	for i := range trs {
 		trs[i] = NewTCPTransport(ids[i].Public)
 	}

@@ -1,23 +1,24 @@
-package net
+package net_test
 
 import (
+	"crypto/rand"
 	"testing"
 	"time"
 
 	"github.com/nikkolasg/dsign/key"
+	"github.com/nikkolasg/dsign/net"
 	"github.com/nikkolasg/dsign/net/transport/tcp"
-	"github.com/nikkolasg/dsign/test"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGateway(t *testing.T) {
-	_, pub1 := test.FakeID("127.0.0.1:8000")
+	_, pub1 := fakeID("127.0.0.1:8000")
 	tr1 := tcp.NewTCPTransport(pub1)
-	g1 := NewGateway(tr1)
+	g1 := net.NewGateway(tr1)
 
-	_, pub2 := test.FakeID("127.0.0.1:8001")
+	_, pub2 := fakeID("127.0.0.1:8001")
 	tr2 := tcp.NewTCPTransport(pub2)
-	g2 := NewGateway(tr2)
+	g2 := net.NewGateway(tr2)
 
 	listenDone := make(chan bool)
 	rcvDone := make(chan bool)
@@ -56,4 +57,12 @@ func TestGateway(t *testing.T) {
 	require.Nil(t, g1.Stop())
 	require.Nil(t, g2.Stop())
 
+}
+
+func fakeID(addr string) (*key.Private, *key.Identity) {
+	priv, id, err := key.NewPrivateIdentityWithAddr(addr, rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	return priv, id
 }
