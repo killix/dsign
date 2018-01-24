@@ -24,7 +24,7 @@ type Gateway interface {
 	// Send sends a message to the given peer represented by this identity.
 	Send(to *key.Identity, msg []byte) error
 	// Start runs the Transport. The given Processor will be handled any new
-	// incoming packets from the Transport.
+	// incoming packets from the Transport. It is a non blocking call.
 	Start(Processor) error
 	// Stop closes all conections and stop the listening
 	Stop() error
