@@ -1,19 +1,19 @@
 package net
 
 import (
+	"crypto/rand"
 	"testing"
 	"time"
 
 	"github.com/nikkolasg/dsign/key"
 	"github.com/nikkolasg/dsign/net/transport/noise"
-	"github.com/nikkolasg/dsign/test"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGateway(t *testing.T) {
-	priv1, pub1 := test.FakeID("127.0.0.1:8000")
+	priv1, pub1 := FakeID("127.0.0.1:8000")
 	//tr1 := tcp.NewTCPTransport(pub1)
-	priv2, pub2 := test.FakeID("127.0.0.1:8001")
+	priv2, pub2 := FakeID("127.0.0.1:8001")
 	list := []*key.Identity{pub1, pub2}
 
 	tr1 := noise.NewTCPNoiseTransport(priv1, list)
@@ -59,4 +59,13 @@ func TestGateway(t *testing.T) {
 	require.Nil(t, g1.Stop())
 	require.Nil(t, g2.Stop())
 
+}
+
+// FakeID returns a random ID with the given address.
+func FakeID(addr string) (*key.Private, *key.Identity) {
+	priv, id, err := key.NewPrivateIdentityWithAddr(addr, rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	return priv, id
 }
