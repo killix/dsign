@@ -12,13 +12,11 @@ import (
 
 func TestGateway(t *testing.T) {
 	priv1, pub1 := FakeID("127.0.0.1:8000")
-	//tr1 := tcp.NewTCPTransport(pub1)
 	priv2, pub2 := FakeID("127.0.0.1:8001")
 	list := []*key.Identity{pub1, pub2}
 
 	tr1 := noise.NewTCPNoiseTransport(priv1, list)
 	g1 := NewGateway(tr1)
-	//tr2 := tcp.NewTCPTransport(pub2)
 	tr2 := noise.NewTCPNoiseTransport(priv2, list)
 	g2 := NewGateway(tr2)
 
