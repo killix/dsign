@@ -25,6 +25,10 @@ type Config struct {
 	Timeout time.Duration // after timeout, protocol is finished in any cases.
 }
 
+// Share represents the private information that a node holds after a successful
+// DKG. This information MUST stay private !
+type Share = dkg.DistKeyShare
+
 // Handler is the stateful struct that runs a DKG with the peers
 type Handler struct {
 	net           Network                    // network to send data out
@@ -227,10 +231,6 @@ func (h *Handler) broadcast(p *Packet) {
 type Network interface {
 	Send(id *key.Identity, pack *Packet) error
 }
-
-// Share represents the private information that a node holds after a successful
-// DKG. This information MUST stay private !
-type Share dkg.DistKeyShare
 
 func validateConf(conf *Config) error {
 	// XXX TODO

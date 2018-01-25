@@ -1,3 +1,5 @@
+// Package key defines the different cryptographic materials used
+// by dsign.
 package key
 
 import (
@@ -17,13 +19,18 @@ import (
 	"github.com/dedis/kyber/group/edwards25519"
 )
 
+// Curve is statically defined so it is compatible with EdDSA
+// ed25519 implementations
 var Curve = edwards25519.NewBlakeSHA256Ed25519()
 
+// Private contains the private ed25519 key (seed) and the
+// related private key
 type Private struct {
 	seed   *ed25519.PrivateKey
 	Public *Identity
 }
 
+// Scalar returns a kyber.Scalar representation of the Private key.
 func (p *Private) Scalar() kyber.Scalar {
 	h := sha512.New()
 	h.Write((*p.seed)[:32])
@@ -40,10 +47,14 @@ func (p *Private) Scalar() kyber.Scalar {
 	return s
 }
 
+// PrivateCurve25519 returns a private key typed to be compatible
+// with what most ed25519 libraries expect.
 func (p *Private) PrivateCurve25519() [32]byte {
 	return ed25519PrivateToCurve25519(p.seed)
 }
 
+// PublicCurve25519 returns a public key typed to be compatible
+// with what most ed25519 libraries expect.
 func (p *Private) PublicCurve25519() [32]byte {
 	priv := p.PrivateCurve25519()
 	var pubCurve [32]byte
@@ -51,10 +62,15 @@ func (p *Private) PublicCurve25519() [32]byte {
 	return pubCurve
 }
 
+// NewPrivateIdentity creates a new private / public key pair given
+// from the given reader = randomness source. It is highly
+// recommended to use crypto/rand.
 func NewPrivateIdentity(r io.Reader) (*Private, *Identity, error) {
 	return NewPrivateIdentityWithAddr("", r)
 }
 
+// NewPrivateIdentityWithAddr is similar to NewPrivateIdentity but
+// specify an address within the newly created private key.
 func NewPrivateIdentityWithAddr(addr string, r io.Reader) (*Private, *Identity, error) {
 	pub, privEd, err := ed25519.GenerateKey(r)
 	if err != nil {
@@ -70,6 +86,8 @@ func NewPrivateIdentityWithAddr(addr string, r io.Reader) (*Private, *Identity, 
 	return priv, id, nil
 }
 
+// Identity contains all public information that can be used to
+// identity a participant.
 type Identity struct {
 	// ed25519 public key
 	Key []byte
@@ -97,6 +115,7 @@ func (i *Identity) selfsign(p *Private, r io.Reader) {
 	i.ID = hex.EncodeToString(b[:])
 }
 
+// PublicCurve25519 returns a ed25519 public key.
 func (i *Identity) PublicCurve25519() [32]byte {
 	var pubEd25519 [32]byte
 	var pubCurve [32]byte
@@ -112,12 +131,16 @@ type privateToml struct {
 	Seed string
 }
 
+// Toml returns a TOML-able struct containing the base64
+// encoded private key
 func (p *Private) Toml() interface{} {
 	seedStr := base64.StdEncoding.EncodeToString(*p.seed)
 
 	return &privateToml{seedStr}
 }
 
+// FromToml reads the given input string to parse the private
+// key.
 func (p *Private) FromToml(f string) error {
 	pt := &privateToml{}
 	_, err := toml.Decode(f, pt)
@@ -138,6 +161,8 @@ type identityToml struct {
 	Address   string
 }
 
+// Toml returns a TOML-able struct containing base64 public key
+// encoded and the signature.
 func (i *Identity) Toml() interface{} {
 	publicStr := base64.StdEncoding.EncodeToString(i.Key)
 	sigStr := base64.StdEncoding.EncodeToString(i.Signature)
@@ -148,6 +173,7 @@ func (i *Identity) Toml() interface{} {
 	}
 }
 
+// FromToml reads the given string to parse the Identity.
 func (i *Identity) FromToml(f string) error {
 	it := &identityToml{}
 	_, err := toml.Decode(f, it)
@@ -168,6 +194,7 @@ func (i *Identity) FromToml(f string) error {
 	return nil
 }
 
+// Point returns a kyber.Point of the ed25519 public key inside i.
 func (i *Identity) Point() kyber.Point {
 	p := Curve.Point()
 	if err := p.UnmarshalBinary(i.Key); err != nil {
