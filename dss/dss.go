@@ -18,6 +18,7 @@ import (
 // information to correctly run the dss protocol.
 type Config struct {
 	// Basic information, same as DKG
+	// XXX Timeout TODO
 	*dkg.Config
 	// longterm secret share
 	Longterm *dkg.Share
@@ -30,9 +31,10 @@ type Config struct {
 // Handler holds the relevant information to perform a distributed
 // signature protocol run.
 type Handler struct {
-	net         Network     // the network interface used to send message
-	conf        *Config     // config needed to setup the dss
-	state       *dss.DSS    // state containing all DSS info
+	net         Network  // the network interface used to send message
+	conf        *Config  // config needed to setup the dss
+	state       *dss.DSS // state containing all DSS info
+	sentSigs    bool
 	signatureCh chan []byte // signature is sent over that channel when ready
 	errorCh     chan error  // error is signalled over that channel
 	done        bool        // true when the signature have been recovered and sent
@@ -70,6 +72,10 @@ func (h *Handler) Process(from *key.Identity, p *Packet) {
 	if err != nil {
 		slog.Debug("dss: error processing partial sig: ", err)
 	}
+
+	if !h.sentSigs {
+		h.sendPartialSig()
+	}
 	if !h.state.EnoughPartialSig() || h.done {
 		return
 	}
@@ -101,15 +107,24 @@ func (h *Handler) sendPartialSig() {
 	if err != nil {
 		h.errorCh <- err
 	}
+	h.sentSigs = true
 	var errS string
+	var ownID = h.conf.Private.Public.ID
+	var good int
 	for _, id := range h.conf.Config.List {
+		if id.ID == ownID {
+			continue
+		}
 		if err := h.net.Send(id, ps); err != nil {
-			errS += err.Error() + "\n"
+			slog.Debug("dss: error sending partial sig: ", err)
+		} else {
+			good++
 		}
 	}
-	if errS != "" {
+	if good < h.conf.Threshold {
 		h.errorCh <- errors.New(errS)
 	}
+	slog.Debugf("dss: sent %d partial signatures", good)
 }
 
 // Network is used by the Handler to send a DSS protocol packet
