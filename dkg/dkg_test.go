@@ -8,7 +8,6 @@ import (
 	"github.com/nikkolasg/dsign/key"
 	"github.com/nikkolasg/dsign/net"
 	"github.com/nikkolasg/dsign/test"
-	"github.com/nikkolasg/slog"
 )
 
 var encoder = net.NewSingleProtoEncoder(&Packet{})
@@ -16,14 +15,23 @@ var encoder = net.NewSingleProtoEncoder(&Packet{})
 type network struct {
 	gw  net.Gateway
 	dkg *Handler
+	cb  func()
 }
 
-func newDkgNetwork(gw net.Gateway, conf *Config) *network {
+func newDkgNetwork(gw net.Gateway, conf *Config, cb func()) *network {
 	n := &network{
 		gw: gw,
 	}
 	gw.Start(n.Process)
 	n.dkg = NewHandler(conf, n)
+	go func() {
+		select {
+		case <-n.dkg.WaitShare():
+			cb()
+		case e := <-n.dkg.WaitError():
+			panic(e)
+		}
+	}()
 	return n
 }
 
@@ -44,19 +52,17 @@ func (n *network) Process(from *key.Identity, msg []byte) {
 	n.dkg.Process(from, dkgPacket)
 }
 
-func networks(keys []*key.Private, gws []net.Gateway, threshold int,
-	shareCb func(Share), timeout time.Duration) []*network {
+func networks(keys []*key.Private, gws []net.Gateway, threshold int, cb func(), timeout time.Duration) []*network {
 	list := test.ListFromPrivates(keys)
 	nets := make([]*network, len(list), len(list))
 	for i := range keys {
 		conf := &Config{
-			Private:       keys[i],
-			List:          list,
-			Threshold:     threshold,
-			ShareCallback: shareCb,
-			Timeout:       timeout,
+			Private:   keys[i],
+			List:      list,
+			Threshold: threshold,
+			Timeout:   timeout,
 		}
-		nets[i] = newDkgNetwork(gws[i], conf)
+		nets[i] = newDkgNetwork(gws[i], conf, cb)
 	}
 	return nets
 }
@@ -73,14 +79,16 @@ func TestDKG(t *testing.T) {
 	n := 5
 	thr := n/2 + 1
 	privs, gws := test.Gateways(n)
-	slog.Level = slog.LevelDebug
-	defer func() { slog.Level = slog.LevelPrint }()
+	//slog.Level = slog.LevelDebug
+	//defer func() { slog.Level = slog.LevelPrint }()
 
 	// waits for receiving n shares
 	var wg sync.WaitGroup
 	wg.Add(n)
-	callback := func(s Share) {
+	var i = 1
+	callback := func() {
 		wg.Done()
+		i++
 	}
 	nets := networks(privs, gws, thr, callback, 100*time.Millisecond)
 	defer stopnetworks(nets)

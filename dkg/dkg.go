@@ -1,6 +1,7 @@
 package dkg
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -15,12 +16,9 @@ import (
 // Config is given to a DKG handler and contains all needed parameters to
 // successfully run the DKG protocol.
 type Config struct {
-	Private       *key.Private    // the longterm private key
-	List          []*key.Identity // the list of participants
-	Threshold     int             // the threshold of active participants needed
-	ShareCallback func(Share)     // callback gets called when share is computed
-	// XXX Currently not implemented
-	ErrCallback func(err error)
+	Private   *key.Private    // the longterm private key
+	List      []*key.Identity // the list of participants
+	Threshold int             // the threshold of active participants needed
 	// XXX Currently not in use / tested
 	Timeout time.Duration // after timeout, protocol is finished in any cases.
 }
@@ -41,6 +39,9 @@ type Handler struct {
 	dealProcessed int                        // how many deals have we processed so far
 	respProcessed int                        // how many responses have we processed so far
 	done          bool                       // is the protocol done
+	shareCh       chan Share                 // share gets sent over shareCh when ready
+	errCh         chan error                 // any fatal error for the protocol gets sent over
+
 	sync.Mutex
 }
 
@@ -76,6 +77,8 @@ func NewHandler(conf *Config, n Network) *Handler {
 		tmpResponses: make(map[uint32][]*dkg.Response),
 		idx:          myIdx,
 		n:            len(list),
+		shareCh:      make(chan Share, 1),
+		errCh:        make(chan error, 1),
 	}
 }
 
@@ -94,7 +97,23 @@ func (h *Handler) Process(id *key.Identity, packet *Packet) {
 // Start sends the first message to run the protocol
 func (h *Handler) Start() {
 	// XXX catch the error
-	h.sendDeals()
+	h.sentDeals = true
+	if err := h.sendDeals(); err != nil {
+		h.errCh <- err
+		h.done = true
+	}
+}
+
+// WaitShare returns a channel over which the share will be sent over when
+// ready.
+func (h *Handler) WaitShare() chan Share {
+	return h.shareCh
+}
+
+// WaitError returns a channel over which any fatal error for the protocol is
+// sent to.
+func (h *Handler) WaitError() chan error {
+	return h.errCh
 }
 
 func (h *Handler) processDeal(id *key.Identity, deal *dkg.Deal) {
@@ -138,6 +157,7 @@ func (h *Handler) processTmpResponses(deal *dkg.Deal) {
 		}
 	}
 }
+
 func (h *Handler) processResponse(pub *key.Identity, resp *dkg.Response) {
 	h.Lock()
 	defer h.checkCertified()
@@ -161,7 +181,7 @@ func (h *Handler) processResponse(pub *key.Identity, resp *dkg.Response) {
 		}
 		go h.broadcast(packet)
 	}
-	slog.Debugf("dkg: processResponse(%d so far) from %s --> Certified() ? %v --> done ? %v", h.respProcessed, pub.Address, h.state.Certified(), h.done)
+	slog.Debugf("dkg: processResponse(%d/%d) from %s --> Certified() ? %v --> done ? %v", h.respProcessed, h.n*(h.n-1), pub.Address, h.state.Certified(), h.done)
 }
 
 // checkCertified checks if there has been enough responses and if so, creates
@@ -181,7 +201,7 @@ func (h *Handler) checkCertified() {
 		return
 	}
 	share := Share(*dks)
-	h.conf.ShareCallback(share)
+	h.shareCh <- share
 }
 
 // sendDeals tries to send the deals to each of the nodes.
@@ -216,6 +236,7 @@ func (h *Handler) sendDeals() error {
 }
 
 func (h *Handler) broadcast(p *Packet) {
+	var good int
 	for i, id := range h.conf.List {
 		if i == h.idx {
 			continue
@@ -223,6 +244,10 @@ func (h *Handler) broadcast(p *Packet) {
 		if err := h.net.Send(id, p); err != nil {
 			slog.Debugf("dkg: error sending packet to %s: %s", id.Address, err)
 		}
+		good++
+	}
+	if good < h.conf.Threshold {
+		h.errCh <- errors.New("dkg: broadcast not successful")
 	}
 	slog.Debugf("dkg: broadcast done")
 }
