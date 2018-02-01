@@ -11,6 +11,7 @@ import (
 
 	"github.com/nikkolasg/dsign/key"
 	"github.com/nikkolasg/dsign/net/transport"
+	"github.com/nikkolasg/slog"
 )
 
 // Gateway is the gateway between dsign and the rest of the world. It enables to
@@ -41,6 +42,7 @@ type gateway struct {
 	processor Processor
 
 	closed bool
+	wg     sync.WaitGroup // to count all goroutines started
 	sync.Mutex
 }
 
@@ -63,7 +65,6 @@ func (g *gateway) Send(to *key.Identity, msg []byte) error {
 			g.Unlock()
 			return err
 		}
-		g.conns[to.ID] = conn
 		go g.listenIncoming(to, conn)
 	}
 	g.Unlock()
@@ -71,9 +72,15 @@ func (g *gateway) Send(to *key.Identity, msg []byte) error {
 }
 
 func (g *gateway) listenIncoming(remote *key.Identity, c transport.Conn) {
+	g.Lock()
+	g.conns[remote.ID] = c
+	g.Unlock()
+	g.wg.Add(1)
+	defer g.wg.Done()
 	for !g.isClosed() {
 		buff, err := rcvBytes(c)
 		if err != nil {
+			slog.Debugf("gateway: error receiving from %s: %s\n", remote.Address, err)
 			return
 		}
 		if g.processor == nil {
@@ -98,9 +105,16 @@ func (g *gateway) Stop() error {
 	defer g.Unlock()
 	g.closed = true
 	for _, c := range g.conns {
-		c.Close()
+		if err := c.Close(); err != nil {
+			return err
+		}
 	}
-	return g.transport.Close()
+	if err := g.transport.Close(); err != nil {
+		return err
+	}
+	g.wg.Wait()
+	g.conns = make(map[string]net.Conn)
+	return nil
 }
 
 func (g *gateway) Transport() transport.Transport {

@@ -3,6 +3,7 @@ package test
 
 import (
 	"crypto/rand"
+	n "net"
 	"strconv"
 
 	"github.com/nikkolasg/dsign/key"
@@ -36,9 +37,25 @@ func FakeID(addr string) (*key.Private, *key.Identity) {
 func Addresses(start, n int) []string {
 	addrs := make([]string, n, n)
 	for i := 0; i < n; i++ {
-		addrs[i] = "127.0.0.1:" + strconv.Itoa(start+i)
+		addrs[i] = "127.0.0.1:" + strconv.Itoa(GetFreePort())
 	}
 	return addrs
+}
+
+// GetFreePort returns an free TCP port.
+// Taken from https://github.com/phayes/freeport/blob/master/freeport.go
+func GetFreePort() int {
+	addr, err := n.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+
+	l, err := n.ListenTCP("tcp", addr)
+	if err != nil {
+		panic(err)
+	}
+	defer l.Close()
+	return l.Addr().(*n.TCPAddr).Port
 }
 
 // GenerateIDs returns n private keys with the start address given to Addresses

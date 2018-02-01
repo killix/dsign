@@ -2,6 +2,7 @@ package internal
 
 import (
 	"crypto/rand"
+	"net"
 	"strconv"
 	"testing"
 	"time"
@@ -44,15 +45,15 @@ func TestTransport(t *testing.T, factory TransportFactory) {
 	time.Sleep(10 * time.Millisecond)
 
 	c21, err := t2.Dial(id1)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	n1, err := c21.Write(message)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	var buff [32]byte
 	n2, err := c21.Read(buff[:])
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, n1, n2)
 
-	require.Nil(t, t1.Close())
+	require.NoError(t, t1.Close())
 
 	select {
 	case <-done:
@@ -77,9 +78,25 @@ func FakeID(addr string) (*key.Private, *key.Identity) {
 func Addresses(start, n int) []string {
 	addrs := make([]string, n, n)
 	for i := 0; i < n; i++ {
-		addrs[i] = "127.0.0.1:" + strconv.Itoa(start+i)
+		addrs[i] = "127.0.0.1:" + strconv.Itoa(GetFreePort())
 	}
 	return addrs
+}
+
+// GetFreePort returns an free TCP port.
+// Taken from https://github.com/phayes/freeport/blob/master/freeport.go
+func GetFreePort() int {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		panic(err)
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
 }
 
 // GenerateIDs returns n private keys with the start address given to Addresses
