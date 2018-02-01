@@ -16,9 +16,9 @@ func TestGateway(t *testing.T) {
 	list := []*key.Identity{pub1, pub2}
 
 	tr1 := noise.NewTCPNoiseTransport(priv1, list)
-	g1 := NewGateway(tr1)
+	g1 := NewGateway(priv1.Public, tr1)
 	tr2 := noise.NewTCPNoiseTransport(priv2, list)
-	g2 := NewGateway(tr2)
+	g2 := NewGateway(priv2.Public, tr2)
 
 	listenDone := make(chan bool)
 	rcvDone := make(chan bool)
