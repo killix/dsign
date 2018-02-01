@@ -22,11 +22,13 @@ func newDkgNetwork(gw net.Gateway, conf *Config, cb func()) *network {
 	n := &network{
 		gw: gw,
 	}
+	//fmt.Printf("Starting gateway %p\n", &gw)
 	gw.Start(n.Process)
 	n.dkg = NewHandler(conf, n)
 	go func() {
 		select {
 		case <-n.dkg.WaitShare():
+			//fmt.Printf("waitshare DONE for gateway %p\n", &gw)
 			cb()
 		case e := <-n.dkg.WaitError():
 			panic(e)
@@ -69,6 +71,7 @@ func networks(keys []*key.Private, gws []net.Gateway, threshold int, cb func(), 
 
 func stopnetworks(nets []*network) {
 	for i := range nets {
+		//fmt.Printf("Stopping gateway %p\n", &nets[i].gw)
 		if err := nets[i].gw.Stop(); err != nil {
 			panic(err)
 		}
@@ -87,6 +90,7 @@ func TestDKG(t *testing.T) {
 	wg.Add(n)
 	var i = 1
 	callback := func() {
+		//fmt.Printf("callback called %d times...\n", i)
 		wg.Done()
 		i++
 	}
@@ -94,6 +98,8 @@ func TestDKG(t *testing.T) {
 	defer stopnetworks(nets)
 
 	nets[0].dkg.Start()
+	//fmt.Println("wg.Wait()...")
 	wg.Wait()
+	//fmt.Println("wg.Wait()... DONE")
 
 }

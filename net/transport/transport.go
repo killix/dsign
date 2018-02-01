@@ -20,7 +20,7 @@ type Transport interface {
 
 // Conn is a simple alias for net.Conn to avoid msiconfusion with the regular
 // golang package.
-type Conn net.Conn
+type Conn = net.Conn
 
 // Handler is a function alias for handling new incoming connection from a
 // Transport. The Identity may be nil if the underlying transport do not support

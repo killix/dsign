@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,31 +35,34 @@ type Gateway interface {
 // Processor is a function that receives messages from the network
 type Processor func(from *key.Identity, msg []byte)
 
+// gateway is a straightforward implementation of a Gateway.
 type gateway struct {
-	transport transport.Transport
-
-	conns map[string]net.Conn
-
-	processor Processor
-
-	closed bool
-	wg     sync.WaitGroup // to count all goroutines started
+	id        *key.Identity       // the public identity of the running gw
+	transport transport.Transport // the underlying transport
+	conns     *connStore          // the list of active connections
+	processor Processor           // the processor to call upon new packets
+	closed    bool                // true if the gateway is closed already
+	wg        sync.WaitGroup      // to count all goroutines started
 	sync.Mutex
 }
 
 // NewGateway returns a default gateway using the underlying given transport
 // implementation.
-func NewGateway(t transport.Transport) Gateway {
+func NewGateway(id *key.Identity, t transport.Transport) Gateway {
 	return &gateway{
+		id:        id,
 		transport: t,
-		conns:     make(map[string]net.Conn),
+		conns:     newConnStore(id.ID),
 	}
 }
 
 func (g *gateway) Send(to *key.Identity, msg []byte) error {
+	if to.ID == g.id.ID {
+		panic("whoa are we sending to ourself!?")
+	}
 	g.Lock()
 	var err error
-	conn, ok := g.conns[to.ID]
+	conn, ok := g.conns.Get(to.ID)
 	if !ok {
 		conn, err = g.transport.Dial(to)
 		if err != nil {
@@ -72,15 +76,17 @@ func (g *gateway) Send(to *key.Identity, msg []byte) error {
 }
 
 func (g *gateway) listenIncoming(remote *key.Identity, c transport.Conn) {
-	g.Lock()
-	g.conns[remote.ID] = c
-	g.Unlock()
+	g.conns.Add(remote.ID, c)
 	g.wg.Add(1)
-	defer g.wg.Done()
-	for !g.isClosed() {
+	defer func() {
+		c.Close()
+		g.conns.Del(remote.ID)
+		g.wg.Done()
+	}()
+	for {
 		buff, err := rcvBytes(c)
 		if err != nil {
-			slog.Debugf("gateway: error receiving from %s: %s\n", remote.Address, err)
+			//fmt.Printf("gateway %p: error receiving from %s: %s\n", g, remote.Address, err)
 			return
 		}
 		if g.processor == nil {
@@ -102,18 +108,20 @@ func (g *gateway) Start(h Processor) error {
 
 func (g *gateway) Stop() error {
 	g.Lock()
-	defer g.Unlock()
+	if g.closed {
+		g.Unlock()
+		return nil
+	}
 	g.closed = true
-	for _, c := range g.conns {
-		if err := c.Close(); err != nil {
-			return err
-		}
-	}
+	g.Unlock()
+
+	g.conns.CloseAll()
+
 	if err := g.transport.Close(); err != nil {
-		return err
+		slog.Debugf("gateway: error closing listener: %s", err)
 	}
+
 	g.wg.Wait()
-	g.conns = make(map[string]net.Conn)
 	return nil
 }
 
@@ -192,3 +200,62 @@ const MaxPacketSize = 1300
 
 // globalOrder is the endianess used to write the size of a message.
 var globalOrder = binary.BigEndian
+
+type connStore struct {
+	Conns map[string][]net.Conn
+	own   string
+	sync.Mutex
+}
+
+func newConnStore(own string) *connStore {
+	return &connStore{
+		own:   own,
+		Conns: make(map[string][]net.Conn),
+	}
+}
+
+func (c *connStore) Add(id string, conn net.Conn) {
+	c.Lock()
+	defer c.Unlock()
+	c.Conns[id] = append(c.Conns[id], conn)
+}
+
+func (c *connStore) Get(id string) (net.Conn, bool) {
+	c.Lock()
+	defer c.Unlock()
+	arr, ok := c.Conns[id]
+	if !ok {
+		return nil, false
+	}
+	var idx int
+	if c.own == id {
+		panic("that should never happen => send to ourself!!=??" + id + ":" + c.own)
+	}
+	if c.own < id {
+		idx = 0
+	} else if len(arr) > 1 && c.own > id {
+		idx = 1
+	}
+	return arr[idx], true
+}
+
+func (c *connStore) Del(id string) {
+	c.Lock()
+	defer c.Unlock()
+	delete(c.Conns, id)
+}
+
+func (c *connStore) CloseAll() {
+	c.Lock()
+	defer c.Unlock()
+	for id, arr := range c.Conns {
+		for _, c := range arr {
+			if err := c.Close(); err != nil {
+				if strings.Contains(err.Error(), "closed network") {
+					continue
+				}
+				slog.Debugf("gateway: err closing conn to %s: %s", id, err)
+			}
+		}
+	}
+}

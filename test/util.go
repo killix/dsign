@@ -18,7 +18,7 @@ func Gateways(n int) ([]*key.Private, []net.Gateway) {
 	list := ListFromPrivates(keys)
 	for i := range keys {
 		noiseTr := noise.NewTCPNoiseTransport(keys[i], list)
-		gws[i] = net.NewGateway(noiseTr)
+		gws[i] = net.NewGateway(keys[i].Public, noiseTr)
 	}
 	return keys, gws
 }
