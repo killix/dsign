@@ -1,6 +1,7 @@
 package dss
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/alecthomas/assert"
@@ -73,6 +74,7 @@ func networks(keys []*key.Private, gws []net.Gateway, list []*key.Identity,
 
 func stopnetworks(nets []*network) {
 	for i := range nets {
+		fmt.Printf("Closing gw %p\n", &nets[i].gw)
 		if err := nets[i].gw.Stop(); err != nil {
 			panic(err)
 		}
@@ -97,6 +99,7 @@ func TestDSS(t *testing.T) {
 	nets[0].dss.Start()
 	sig := <-nets[0].dss.WaitSignature()
 	require.Nil(t, schnorr.Verify(key.Curve, longterms[0].Public(), message, sig))
+	fmt.Println("DONE")
 }
 
 func genShares(keys []*key.Private, points []kyber.Point, threshold int, t *testing.T) []*dkg.Share {

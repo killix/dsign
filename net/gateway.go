@@ -60,28 +60,29 @@ func (g *gateway) Send(to *key.Identity, msg []byte) error {
 	if to.ID == g.id.ID {
 		panic("whoa are we sending to ourself!?")
 	}
-	g.Lock()
 	var err error
 	conn, ok := g.conns.Get(to.ID)
 	if !ok {
 		conn, err = g.transport.Dial(to)
 		if err != nil {
-			g.Unlock()
 			return err
 		}
-		go g.listenIncoming(to, conn)
+		g.runNewConn(to, conn)
 	}
-	g.Unlock()
 	return sendBytes(conn, msg)
 }
 
-func (g *gateway) listenIncoming(remote *key.Identity, c transport.Conn) {
+func (g *gateway) runNewConn(remote *key.Identity, c transport.Conn) {
 	g.conns.Add(remote.ID, c)
 	g.wg.Add(1)
+	go g.listenIncoming(remote, c)
+}
+
+func (g *gateway) listenIncoming(remote *key.Identity, c transport.Conn) {
 	defer func() {
-		c.Close()
-		g.conns.Del(remote.ID)
 		g.wg.Done()
+		g.conns.Del(remote.ID)
+		c.Close()
 	}()
 	for {
 		buff, err := rcvBytes(c)
@@ -102,7 +103,7 @@ func (g *gateway) Start(h Processor) error {
 		return errors.New("router only supports one handler registration")
 	}
 	g.processor = h
-	go g.transport.Listen(g.listenIncoming)
+	go g.transport.Listen(g.runNewConn)
 	return nil
 }
 
@@ -236,6 +237,7 @@ func (c *connStore) Get(id string) (net.Conn, bool) {
 	} else if len(arr) > 1 && c.own > id {
 		idx = 1
 	}
+	//idx = 0
 	return arr[idx], true
 }
 

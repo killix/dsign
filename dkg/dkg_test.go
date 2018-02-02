@@ -88,11 +88,11 @@ func TestDKG(t *testing.T) {
 	// waits for receiving n shares
 	var wg sync.WaitGroup
 	wg.Add(n)
-	var i = 1
+	//var i = 1
 	callback := func() {
 		//fmt.Printf("callback called %d times...\n", i)
 		wg.Done()
-		i++
+		//i++
 	}
 	nets := networks(privs, gws, thr, callback, 100*time.Millisecond)
 	defer stopnetworks(nets)

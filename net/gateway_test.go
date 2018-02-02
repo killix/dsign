@@ -24,7 +24,6 @@ func TestGateway(t *testing.T) {
 	rcvDone := make(chan bool)
 	sentDone := make(chan bool, 1)
 	handler2 := func(from *key.Identity, msg []byte) {
-		// XXX from is nil for tcp connections only. need to do noise XXX
 		<-sentDone
 		require.Nil(t, g2.Send(pub1, msg))
 		listenDone <- true
