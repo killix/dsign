@@ -5,6 +5,7 @@ package proto
 type Protocol struct {
 }
 
+// NewProtocol returns a new protocol
 func NewProtocol() *Protocol {
-
+	return &Protocol{}
 }
