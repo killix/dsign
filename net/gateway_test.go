@@ -2,6 +2,7 @@ package net
 
 import (
 	"crypto/rand"
+	"strconv"
 	"testing"
 	"time"
 
@@ -56,7 +57,64 @@ func TestGateway(t *testing.T) {
 	}
 	require.Nil(t, g1.Stop())
 	require.Nil(t, g2.Stop())
+}
 
+func TestGatewayBroadcast(t *testing.T) {
+	n := 4
+	privs, gws := Gateways(n)
+	list := ListFromPrivates(privs)
+	root := privs[0].Public
+	expected := n * (n - 1)
+	//fmt.Println("expected => ", expected)
+	rcvChan := make(chan bool)
+	handlers := make([]Processor, n, n)
+
+	// close all after
+	defer func() {
+		for i := range gws {
+			require.NoError(t, gws[i].Stop())
+		}
+	}()
+
+	for i := range handlers {
+		handlers[i] = func(gw Gateway) Processor {
+			return func(from *key.Identity, msg []byte) {
+				rcvChan <- true
+				if from.Equals(root) {
+					require.NoError(t, gw.Broadcast(list, msg))
+				}
+			}
+		}(gws[i])
+		gws[i].Start(handlers[i])
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	//fmt.Println("broadcast start")
+	require.NoError(t, gws[0].Broadcast(list, []byte("Hello World")))
+	//fmt.Println("broadcast done")
+	var received int
+	for {
+		select {
+		case <-rcvChan:
+			received++
+			//fmt.Println("received => ", received)
+			if received == expected {
+				return
+			}
+		}
+	}
+}
+
+// Gateways returns n test Gateway using encrypted noise communication
+func Gateways(n int) ([]*key.Private, []Gateway) {
+	keys := GenerateIDs(8000, n)
+	gws := make([]Gateway, n, n)
+	list := ListFromPrivates(keys)
+	for i := range keys {
+		noiseTr := noise.NewTCPNoiseTransport(keys[i], list)
+		gws[i] = NewGateway(keys[i].Public, noiseTr)
+	}
+	return keys, gws
 }
 
 // FakeID returns a random ID with the given address.
@@ -66,4 +124,36 @@ func FakeID(addr string) (*key.Private, *key.Identity) {
 		panic(err)
 	}
 	return priv, id
+}
+
+// Addresses returns a list of TCP localhost addresses starting from the given
+// port= start.
+func Addresses(start, n int) []string {
+	addrs := make([]string, n, n)
+	for i := 0; i < n; i++ {
+		addrs[i] = "127.0.0.1:" + strconv.Itoa(start+i)
+	}
+	return addrs
+}
+
+// GenerateIDs returns n private keys with the start address given to Addresses
+func GenerateIDs(start, n int) []*key.Private {
+	keys := make([]*key.Private, n)
+	addrs := Addresses(start, n)
+	for i := range addrs {
+		priv, _ := FakeID(addrs[i])
+		keys[i] = priv
+	}
+	return keys
+}
+
+// ListFromPrivates returns a list of Identity from a list of Private keys.
+func ListFromPrivates(keys []*key.Private) []*key.Identity {
+	n := len(keys)
+	list := make([]*key.Identity, n, n)
+	for i := range keys {
+		list[i] = keys[i].Public
+	}
+	return list
+
 }

@@ -25,6 +25,9 @@ type Gateway interface {
 	Transport() transport.Transport
 	// Send sends a message to the given peer represented by this identity.
 	Send(to *key.Identity, msg []byte) error
+	// Broadcast sends the same message to the given group. Implementations must
+	// return an error in case at least one transmission went wrong.
+	Broadcast(group []*key.Identity, msg []byte) error
 	// Start runs the Transport. The given Processor will be handled any new
 	// incoming packets from the Transport. It is a non blocking call.
 	Start(Processor) error
@@ -70,6 +73,32 @@ func (g *gateway) Send(to *key.Identity, msg []byte) error {
 		g.runNewConn(to, conn)
 	}
 	return sendBytes(conn, msg)
+}
+
+// Broadcasts send the given message to each peers in the list EXCEPT its own.
+func (g *gateway) Broadcast(group []*key.Identity, msg []byte) error {
+	var errStr string
+	var errMut sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(len(group) - 1)
+	for _, id := range group {
+		if g.id.Equals(id) {
+			continue
+		}
+		go func(to *key.Identity) {
+			if err := g.Send(to, msg); err != nil {
+				errMut.Lock()
+				errStr += err.Error() + "\n"
+				errMut.Unlock()
+			}
+			wg.Done()
+		}(id)
+	}
+	wg.Wait()
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
 }
 
 func (g *gateway) runNewConn(remote *key.Identity, c transport.Conn) {
