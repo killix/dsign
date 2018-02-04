@@ -16,7 +16,6 @@ import (
 // Config is given to a DKG handler and contains all needed parameters to
 // successfully run the DKG protocol.
 type Config struct {
-	Private   *key.Private    // the longterm private key
 	List      []*key.Identity // the list of participants
 	Threshold int             // the threshold of active participants needed
 	// XXX Currently not in use / tested
@@ -46,12 +45,11 @@ type Handler struct {
 }
 
 // NewHandler returns a fresh dkg handler using this private key.
-func NewHandler(conf *Config, n Network) *Handler {
+func NewHandler(priv *key.Private, conf *Config, n Network) *Handler {
 	if err := validateConf(conf); err != nil {
 		panic(err)
 	}
 	list := conf.List
-	priv := conf.Private
 	t := conf.Threshold
 	points := make([]kyber.Point, len(list), len(list))
 	myIdx := -1

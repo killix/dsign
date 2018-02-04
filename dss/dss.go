@@ -31,9 +31,10 @@ type Config struct {
 // Handler holds the relevant information to perform a distributed
 // signature protocol run.
 type Handler struct {
-	net         Network  // the network interface used to send message
-	conf        *Config  // config needed to setup the dss
-	state       *dss.DSS // state containing all DSS info
+	net         Network      // the network interface used to send message
+	priv        *key.Private // private key
+	conf        *Config      // config needed to setup the dss
+	state       *dss.DSS     // state containing all DSS info
 	sentSigs    bool
 	signatureCh chan []byte // signature is sent over that channel when ready
 	errorCh     chan error  // error is signalled over that channel
@@ -43,15 +44,16 @@ type Handler struct {
 }
 
 // NewHandler returns a dss handler using the given conf.
-func NewHandler(conf *Config, net Network) *Handler {
+func NewHandler(priv *key.Private, conf *Config, net Network) *Handler {
 	points := key.IdentitiesToPoints(conf.List)
-	state, err := dss.NewDSS(key.Curve, conf.Private.Scalar(), points, conf.Longterm, conf.Random, conf.Message, conf.Threshold)
+	state, err := dss.NewDSS(key.Curve, priv.Scalar(), points, conf.Longterm, conf.Random, conf.Message, conf.Threshold)
 	if err != nil {
 		// error only if key is not in list
 		panic("dss: error using dss library: " + err.Error())
 	}
 	return &Handler{
 		conf:        conf,
+		priv:        priv,
 		net:         net,
 		state:       state,
 		signatureCh: make(chan []byte, 1),
@@ -109,7 +111,7 @@ func (h *Handler) sendPartialSig() {
 	}
 	h.sentSigs = true
 	var errS string
-	var ownID = h.conf.Private.Public.ID
+	var ownID = h.priv.Public.ID
 	var good int
 	for _, id := range h.conf.Config.List {
 		if id.ID == ownID {

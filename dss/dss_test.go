@@ -23,12 +23,12 @@ type network struct {
 	dss *Handler
 }
 
-func newDssNetwork(gw net.Gateway, conf *Config) *network {
+func newDssNetwork(gw net.Gateway, priv *key.Private, conf *Config) *network {
 	n := &network{
 		gw: gw,
 	}
 	gw.Start(n.Process)
-	n.dss = NewHandler(conf, n)
+	n.dss = NewHandler(priv, conf, n)
 	return n
 }
 
@@ -56,7 +56,6 @@ func networks(keys []*key.Private, gws []net.Gateway, list []*key.Identity,
 	nets := make([]*network, n, n)
 	for i := range keys {
 		dkgConf := &dkg.Config{
-			Private:   keys[i],
 			List:      list,
 			Threshold: threshold,
 		}
@@ -67,7 +66,7 @@ func networks(keys []*key.Private, gws []net.Gateway, list []*key.Identity,
 			Message:  message,
 			//  TIMEOUT TODO
 		}
-		nets[i] = newDssNetwork(gws[i], dssConf)
+		nets[i] = newDssNetwork(gws[i], keys[i], dssConf)
 	}
 	return nets
 }

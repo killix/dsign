@@ -18,13 +18,13 @@ type network struct {
 	cb  func()
 }
 
-func newDkgNetwork(gw net.Gateway, conf *Config, cb func()) *network {
+func newDkgNetwork(gw net.Gateway, priv *key.Private, conf *Config, cb func()) *network {
 	n := &network{
 		gw: gw,
 	}
 	//fmt.Printf("Starting gateway %p\n", &gw)
 	gw.Start(n.Process)
-	n.dkg = NewHandler(conf, n)
+	n.dkg = NewHandler(priv, conf, n)
 	go func() {
 		select {
 		case <-n.dkg.WaitShare():
@@ -59,12 +59,11 @@ func networks(keys []*key.Private, gws []net.Gateway, threshold int, cb func(), 
 	nets := make([]*network, len(list), len(list))
 	for i := range keys {
 		conf := &Config{
-			Private:   keys[i],
 			List:      list,
 			Threshold: threshold,
 			Timeout:   timeout,
 		}
-		nets[i] = newDkgNetwork(gws[i], conf, cb)
+		nets[i] = newDkgNetwork(gws[i], keys[i], conf, cb)
 	}
 	return nets
 }
